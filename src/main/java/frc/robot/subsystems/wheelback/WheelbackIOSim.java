@@ -1,0 +1,56 @@
+// Copyright (c) 2025-2026 Littleton Robotics
+// http://github.com/Mechanical-Advantage
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file at
+// the root directory of this project.
+
+package frc.robot.subsystems.wheelback;
+
+import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.system.plant.DCMotor;
+import edu.wpi.first.math.system.plant.LinearSystemId;
+import edu.wpi.first.wpilibj.simulation.DCMotorSim;
+import frc.robot.Constants;
+
+public class WheelbackIOSim implements WheelbackIO {
+  private static final DCMotor motorModel = DCMotor.getKrakenX60(1);
+  private static final DCMotorSim sim =
+      new DCMotorSim(LinearSystemId.createDCMotorSystem(motorModel, .025, 1), motorModel);
+
+  private PIDController controller = new PIDController(0.5, 0, 0, Constants.loopPeriodSecs);
+  private double currentOutput = 0.0;
+  private double currentOutputAsVolt = 0.0;
+  private double appliedVolts = 0.0;
+
+  public WheelbackIOSim() {}
+
+  @Override
+  public void updateInputs(WheelbackIOInputs inputs) {
+    currentOutputAsVolt = motorModel.getVoltage(currentOutput, sim.getAngularVelocityRadPerSec());
+    appliedVolts = currentOutputAsVolt;
+
+    // Update sim state
+    sim.setInputVoltage(MathUtil.clamp(appliedVolts, -12.0, 12.0));
+    sim.update(Constants.loopPeriodSecs);
+
+    inputs.connected = true;
+    inputs.positionRads = sim.getAngularPositionRad();
+    inputs.velocityRadsPerSec = sim.getAngularVelocityRadPerSec();
+    inputs.appliedVoltage = appliedVolts;
+    inputs.supplyCurrentAmps = sim.getCurrentDrawAmps();
+    inputs.torqueCurrentAmps = currentOutput;
+    inputs.tempCelsius = 0.0;
+  }
+
+  @Override
+  public void applyOutputs(WheelbackIOOutputs outputs) {
+    if (outputs.mode == WheelbackIOOutputMode.COAST) {
+      currentOutput = 0.0;
+    } else {
+      currentOutput =
+          controller.calculate(sim.getAngularVelocityRadPerSec(), outputs.velocityRadsPerSec);
+    }
+  }
+}
